@@ -1,0 +1,53 @@
+[package]
+name = "MineRStatus"
+version = "0.1.0"
+edition = "2024"
+description = "A lightweight Minecraft server status query API in Rust"
+license = "MIT"
+repository = "https://github.com/MSCPO/MineRStatus"
+# The single binary is the Vercel function entrypoint (`src/main.rs`). Vercel's
+# Rust framework detection hardcodes entrypoint `src/main.rs` and its builder
+# runs `cargo build --bin main`, so the binary MUST be named `main`.
+# Locally `cargo run` starts it as a dev server (vercel_runtime dev mode).
+
+[lib]
+name = "minerstatus"
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+rust-mc-status = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+base64 = "0.22"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Vercel-only dependencies. Kept out of the local binary via the `vercel`
+# feature (see [features] below). These compile on Vercel's Linux build
+# servers; they are only reachable from the `vercel` feature, so a local
+# `--no-default-features` build never links them.
+vercel_runtime = { version = "2.4", features = ["axum"], optional = true }
+hyper = { version = "1", features = ["full"], optional = true }
+tower = { version = "0.5", features = ["util"], optional = true }
+utoipa = { version = "5.5.0", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
+
+[features]
+# On by default so that Vercel's Rust builder (`cargo build --bin main`,
+# which uses the default features) builds the serverless-function entrypoint.
+# Run locally with `cargo run --no-default-features` to get a plain axum TCP
+# server with no Vercel runtime linked.
+default = ["vercel"]
+vercel = ["dep:vercel_runtime", "dep:hyper", "dep:tower"]
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = 3
