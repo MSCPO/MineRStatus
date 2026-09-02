@@ -39,6 +39,7 @@ window.UI["en"] = {
   "wiki.pages.deployment": "Deployment",
   "wiki.pages.configuration": "Configuration",
   "wiki.pages.errors": "Errors",
+  "wiki.pages.contributing": "Contributing",
   "wiki.loading": "Loading…",
   "wiki.notFound": "Markdown bundle not found for \"{slug}\". Rebuild it with: node docs/build.js",
   "apiTest.subtitle": "Query a Minecraft server against a live MineRStatus deployment.",

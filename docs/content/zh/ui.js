@@ -39,6 +39,7 @@ window.UI["zh"] = {
   "wiki.pages.deployment": "部署",
   "wiki.pages.configuration": "配置",
   "wiki.pages.errors": "错误",
+  "wiki.pages.contributing": "贡献指南",
   "wiki.loading": "加载中…",
   "wiki.notFound": "未找到 \"{slug}\" 的 markdown。请重新构建：node docs/build.js",
   "apiTest.subtitle": "向任意 MineRStatus 实例查询 Minecraft 服务器状态。",

@@ -29,6 +29,21 @@ Then query a server:
 GET /?ip=play.example.com
 ```
 
+## Repository
+
+GitHub: [github.com/MSCPO/MineRStatus](https://github.com/MSCPO/MineRStatus)
+
+[![Stars](https://img.shields.io/github/stars/MSCPO/MineRStatus?style=flat-square&logo=github&label=Stars)](https://github.com/MSCPO/MineRStatus/stargazers)
+[![Forks](https://img.shields.io/github/forks/MSCPO/MineRStatus?style=flat-square&logo=github&label=Forks)](https://github.com/MSCPO/MineRStatus/network/members)
+[![Watchers](https://img.shields.io/github/watchers/MSCPO/MineRStatus?style=flat-square&logo=github&label=Watchers)](https://github.com/MSCPO/MineRStatus/watchers)
+[![Contributors](https://img.shields.io/github/contributors/MSCPO/MineRStatus?style=flat-square&logo=github&label=Contributors)](https://github.com/MSCPO/MineRStatus/graphs/contributors)
+[![Issues](https://img.shields.io/github/issues/MSCPO/MineRStatus?style=flat-square&logo=github&label=Issues)](https://github.com/MSCPO/MineRStatus/issues)
+[![License](https://img.shields.io/github/license/MSCPO/MineRStatus?style=flat-square&label=License)](LICENSE)
+
+> Star / fork / watcher counts update automatically via
+> [shields.io](https://shields.io). Clone counts are only exposed by the
+> GitHub API with authentication, so they are not shown here.
+
 ## Contents
 
 | Page | Description |
@@ -37,3 +52,4 @@ GET /?ip=play.example.com
 | [Deployment](deployment.md) | Vercel serverless and local self-hosting |
 | [Configuration](configuration.md) | `config.toml` and environment variables |
 | [Errors](errors.md) | Error responses and status codes |
+| [Contributing](contributing.md) | How to contribute, dev setup and checks |
