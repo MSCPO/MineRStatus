@@ -3,6 +3,7 @@
 //! Priority: config.toml > environment variables (`MINESTATUS_*`) > defaults.
 
 use std::env;
+use std::net::IpAddr;
 use std::path::Path;
 use std::time::Duration;
 
@@ -29,11 +30,21 @@ pub struct QueryConfig {
     pub max_total: Duration,
 }
 
+/// Custom DNS servers for SRV / A-record resolution (primary first).
+///
+/// Each entry may be an IPv4 or IPv6 address; DNS queries go to port 53.
+/// When empty, the system DNS is used instead.
+#[derive(Debug, Clone)]
+pub struct DnsConfig {
+    pub servers: Vec<IpAddr>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub server: ServerConfig,
     pub cache: CacheConfig,
     pub query: QueryConfig,
+    pub dns: DnsConfig,
 }
 
 impl Default for Config {
@@ -50,6 +61,9 @@ impl Default for Config {
             query: QueryConfig {
                 timeout: Duration::from_secs(8),
                 max_total: Duration::from_secs(9),
+            },
+            dns: DnsConfig {
+                servers: Vec::new(),
             },
         }
     }
@@ -87,6 +101,24 @@ fn string_or(root: &toml::Value, section: &str, name: &str, default: &str) -> St
     env_str(name).unwrap_or_else(|| default.to_string())
 }
 
+/// Read a custom DNS server (IPv4 or IPv6) from `[dns] <key>` or the
+/// `MINESTATUS_<ENV_NAME>` environment variable. Empty / invalid -> `None`.
+fn dns_ip(root: &toml::Value, key: &str, env_name: &str) -> Option<IpAddr> {
+    let from_toml = root
+        .get("dns")
+        .and_then(toml::Value::as_table)
+        .and_then(|t| t.get(key))
+        .and_then(toml::Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string);
+    let raw = from_toml
+        .or_else(|| env::var(format!("MINESTATUS_{env_name}")).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    raw.and_then(|s| s.parse::<IpAddr>().ok())
+}
+
 pub fn load() -> Config {
     let mut result = Config::default();
 
@@ -117,6 +149,19 @@ pub fn load() -> Config {
 
     let max_total = int_or::<9>(&root, "query", "max_total");
     result.query.max_total = Duration::from_secs(u64::try_from(max_total).unwrap_or(9));
+
+    // [dns] — up to three custom nameservers (primary + two secondary).
+    let mut dns_servers = Vec::new();
+    for (key, env_name) in [
+        ("primary", "DNS_PRIMARY"),
+        ("secondary1", "DNS_SECONDARY1"),
+        ("secondary2", "DNS_SECONDARY2"),
+    ] {
+        if let Some(ip) = dns_ip(&root, key, env_name) {
+            dns_servers.push(ip);
+        }
+    }
+    result.dns.servers = dns_servers;
 
     result
 }

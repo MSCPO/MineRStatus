@@ -4,9 +4,16 @@
 //! Java and Bedrock Edition queries, auto-detection, and cached reads.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::net::IpAddr;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime};
 
+use hickory_resolver::{
+    Resolver,
+    config::{NameServerConfig, ResolverConfig},
+    net::runtime::TokioRuntimeProvider,
+    proto::rr::RData,
+};
 use rust_mc_status::{
     BedrockServerStatus, JavaServerStatus, McClient, McError, NetworkError, StatusExt,
     strip_formatting,
@@ -31,6 +38,30 @@ pub struct AppState {
     /// the serverless execution limit so a failing query returns its JSON
     /// error instead of being killed by the runtime.
     pub query_budget: Duration,
+    /// DNS resolver built from the configured custom servers (or the system
+    /// DNS when none are configured). `None` when neither is available §?in
+    /// that case SRV falls back to DNS-over-HTTPS and A-records use the system
+    /// resolver via `rust_mc_status`.
+    resolver: Option<Arc<Resolver<TokioRuntimeProvider>>>,
+    /// Whether the user configured custom DNS servers. When true, A-record
+    /// resolution also goes through the resolver (connection uses the IP).
+    custom_dns: bool,
+    /// SRV lookup cache (positive and negative), keyed by hostname.
+    srv_cache: Arc<RwLock<HashMap<String, SrvEntry>>>,
+    /// A-record lookup cache (custom-DNS path only), keyed by hostname.
+    ip_cache: Arc<RwLock<HashMap<String, IpEntry>>>,
+}
+
+/// A cached SRV result: `None` caches a negative (no SRV record) lookup.
+struct SrvEntry {
+    result: Option<(String, u16)>,
+    stored_at: SystemTime,
+}
+
+/// A cached A-record result (custom-DNS path).
+struct IpEntry {
+    ip: IpAddr,
+    stored_at: SystemTime,
 }
 
 impl AppState {
@@ -39,6 +70,38 @@ impl AppState {
             client: McClient::builder().timeout(config.query.timeout).build(),
             cache: Cache::new(config.cache.ttl, config.cache.max_size),
             query_budget: config.query.max_total,
+            resolver: build_resolver(config),
+            custom_dns: !config.dns.servers.is_empty(),
+            srv_cache: Arc::new(RwLock::new(HashMap::new())),
+            ip_cache: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
+/// Build the DNS resolver: configured custom servers if any, otherwise the
+/// system DNS configuration. Returns `None` when neither is available.
+fn build_resolver(config: &Config) -> Option<Arc<Resolver<TokioRuntimeProvider>>> {
+    let provider = TokioRuntimeProvider::default();
+    if !config.dns.servers.is_empty() {
+        let servers: Vec<NameServerConfig> = config
+            .dns
+            .servers
+            .iter()
+            .map(|ip| NameServerConfig::udp_and_tcp(*ip))
+            .collect();
+        let cfg = ResolverConfig::from_parts(None, Vec::new(), servers);
+        Resolver::builder_with_config(cfg, provider)
+            .build()
+            .ok()
+            .map(Arc::new)
+    } else {
+        match hickory_resolver::system_conf::read_system_conf() {
+            Ok((cfg, opts)) => Resolver::builder_with_config(cfg, provider)
+                .with_options(opts)
+                .build()
+                .ok()
+                .map(Arc::new),
+            Err(_) => None,
         }
     }
 }
@@ -151,14 +214,17 @@ pub struct ErrorResponse {
 /// Maximum total attempts per status query (the original plus retries).
 ///
 /// Some servers (e.g. behind regional firewalls or anti-DDoS protection)
-/// intermittently drop connections from distant regions — a transient timeout
+/// intermittently drop connections from distant regions §?a transient timeout
 /// that a quick retry usually gets past.
 const MAX_ATTEMPTS: usize = 3;
+
+/// SRV lookup cache TTL.
+const SRV_CACHE_TTL: Duration = Duration::from_secs(300);
 
 /// Whether a query error is worth retrying.
 ///
 /// Retries timeouts and connection failures, which may be transient. DNS
-/// failures are not retried — the hostname is unlikely to resolve on a second
+/// failures are not retried §?the hostname is unlikely to resolve on a second
 /// attempt.
 fn should_retry(err: &McError) -> bool {
     matches!(
@@ -167,12 +233,181 @@ fn should_retry(err: &McError) -> bool {
     )
 }
 
+/// Whether an address string carries an explicit port (mirrors
+/// `rust_mc_status`'s address parser): `"host:port"` / `"[v6]:port"` yes,
+/// bare IPv6 and plain hostnames no.
+fn has_explicit_port(addr: &str) -> bool {
+    if let Some(rest) = addr.strip_prefix('[') {
+        let after = &rest[rest.find(']').map_or(rest.len(), |i| i + 1)..];
+        return after.starts_with(':');
+    }
+    if addr.chars().filter(|&c| c == ':').count() > 1 {
+        return false; // bare IPv6 literal, no port
+    }
+    addr.contains(':')
+}
+
+/// Resolve `_minecraft._tcp.<host>` through the configured/system DNS resolver.
+async fn resolve_mc_srv_via_resolver(
+    resolver: &Resolver<TokioRuntimeProvider>,
+    host: &str,
+) -> Option<(String, u16)> {
+    let name = format!("_minecraft._tcp.{host}");
+    let answer = tokio::time::timeout(Duration::from_secs(4), resolver.srv_lookup(&name))
+        .await
+        .ok()?
+        .ok()?;
+    // Prefer the lowest-priority SRV record.
+    let mut best: Option<(String, u16, u16)> = None; // (target, port, priority)
+    for record in answer.answers() {
+        if let RData::SRV(srv) = &record.data
+            && best
+                .as_ref()
+                .is_none_or(|(_, _, prio)| srv.priority < *prio)
+        {
+            best = Some((
+                srv.target.to_string().trim_end_matches('.').to_string(),
+                srv.port,
+                srv.priority,
+            ));
+        }
+    }
+    best.map(|(target, port, _)| (target, port))
+}
+
+/// Resolve `_minecraft._tcp.<host>` via AliDNS-over-HTTPS (fallback when no
+/// hickory resolver could be built). Returns `None` on failure / no record.
+async fn resolve_mc_srv_via_doh(host: &str) -> Option<(String, u16)> {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    let client = CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .expect("failed to build DoH client")
+    });
+
+    let url = format!("https://dns.alidns.com/resolve?name=_minecraft._tcp.{host}&type=SRV");
+    let resp = client.get(&url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let json: serde_json::Value = resp.json().await.ok()?;
+    let answers = json.get("Answer")?.as_array()?;
+    for answer in answers {
+        if answer.get("type").and_then(|t| t.as_u64()) != Some(33) {
+            continue;
+        }
+        let data = answer.get("data")?.as_str()?;
+        let mut parts = data.split_whitespace();
+        let _priority = parts.next()?;
+        let _weight = parts.next()?;
+        let port: u16 = parts.next()?.parse().ok()?;
+        let target = parts.next()?.trim_end_matches('.');
+        if !target.is_empty() && port != 0 {
+            return Some((target.to_string(), port));
+        }
+    }
+    None
+}
+
+/// Cached SRV lookup (positive and negative results are cached).
+async fn lookup_mc_srv(state: &AppState, host: &str) -> Option<(String, u16)> {
+    {
+        let cache = state.srv_cache.read().await;
+        if let Some(entry) = cache.get(host)
+            && entry.stored_at.elapsed().unwrap_or(Duration::MAX) < SRV_CACHE_TTL
+        {
+            return entry.result.clone();
+        }
+    }
+    let result = if let Some(resolver) = &state.resolver {
+        resolve_mc_srv_via_resolver(resolver, host).await
+    } else {
+        resolve_mc_srv_via_doh(host).await
+    };
+    state.srv_cache.write().await.insert(
+        host.to_string(),
+        SrvEntry {
+            result: result.clone(),
+            stored_at: SystemTime::now(),
+        },
+    );
+    result
+}
+
+/// Resolve a hostname to an IP through the resolver (custom-DNS path), cached.
+async fn lookup_ip_cached(state: &AppState, host: &str) -> Option<IpAddr> {
+    {
+        let cache = state.ip_cache.read().await;
+        if let Some(entry) = cache.get(host)
+            && entry.stored_at.elapsed().unwrap_or(Duration::MAX) < SRV_CACHE_TTL
+        {
+            return Some(entry.ip);
+        }
+    }
+    let ip = async {
+        let resolver = state.resolver.as_ref()?;
+        let ips = tokio::time::timeout(Duration::from_secs(4), resolver.lookup_ip(host))
+            .await
+            .ok()?
+            .ok()?;
+        let mut v4 = None;
+        let mut v6 = None;
+        for addr in ips.iter() {
+            if v6.is_none() {
+                v6 = Some(addr);
+            }
+            if addr.is_ipv4() && v4.is_none() {
+                v4 = Some(addr);
+            }
+        }
+        v4.or(v6)
+    }
+    .await;
+    if let Some(ip) = ip {
+        state.ip_cache.write().await.insert(
+            host.to_string(),
+            IpEntry {
+                ip,
+                stored_at: SystemTime::now(),
+            },
+        );
+    }
+    ip
+}
+
 /// Query a Java server with retries on transient network errors.
+///
+/// For hosts without an explicit port, the `_minecraft._tcp` SRV record is
+/// resolved first (via AliDNS-over-HTTPS) and the target is pinned with an
+/// explicit port, bypassing `rust_mc_status`'s unreliable internal SRV
+/// resolver. This matches the official Minecraft client and MineStatus.
 ///
 /// The whole attempt sequence is bounded by the state's `query_budget`, so a
 /// blocked/unreachable server returns its JSON error well before any serverless
 /// execution limit is reached.
 async fn java_with_retry(state: &AppState, host: &str) -> Result<StatusResponse, QueryError> {
+    // For hosts without an explicit port, resolve the Minecraft SRV record
+    // first and pin the target with an explicit port. When custom DNS servers
+    // are configured, A-record resolution also goes through the resolver and
+    // the connection is made to the resolved IP.
+    let target = if has_explicit_port(host) {
+        host.to_string()
+    } else {
+        let (target_host, target_port) = match lookup_mc_srv(state, host).await {
+            Some((h, p)) => (h, p),
+            None => (host.to_string(), 25565),
+        };
+        if state.custom_dns {
+            match lookup_ip_cached(state, &target_host).await {
+                Some(ip) => format!("{ip}:{target_port}"),
+                None => format!("{target_host}:{target_port}"),
+            }
+        } else {
+            format!("{target_host}:{target_port}")
+        }
+    };
+
     let deadline = tokio::time::Instant::now() + state.query_budget;
     let mut last: Option<McError> = None;
     for _ in 0..MAX_ATTEMPTS {
@@ -180,7 +415,7 @@ async fn java_with_retry(state: &AppState, host: &str) -> Result<StatusResponse,
         if remaining.is_zero() {
             break;
         }
-        match tokio::time::timeout(remaining, state.client.java(host)).await {
+        match tokio::time::timeout(remaining, state.client.java(&target)).await {
             Ok(Ok(status)) => return Ok(build_java_response(&status)),
             Ok(Err(err)) if !should_retry(&err) => {
                 return Err(QueryError(format!(
@@ -581,5 +816,14 @@ mod tests {
         assert!(!should_retry(&McError::Network(NetworkError::Dns(
             "nxdomain".to_string()
         ))));
+    }
+
+    #[test]
+    fn explicit_port_detection_matches_rust_mc_status() {
+        assert!(has_explicit_port("mc.hypixel.net:25565"));
+        assert!(has_explicit_port("[::1]:25565"));
+        assert!(!has_explicit_port("ranmc.cc"));
+        assert!(!has_explicit_port("[::1]"));
+        assert!(!has_explicit_port("::1"));
     }
 }

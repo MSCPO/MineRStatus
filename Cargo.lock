@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64",
+ "hickory-resolver",
  "hyper",
  "reqwest",
  "rust-mc-status",

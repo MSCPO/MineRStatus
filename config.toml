@@ -29,3 +29,11 @@ timeout = 8
 # otherwise the runtime kills the function before the JSON error is returned.
 # Env: MINESTATUS_MAX_TOTAL
 max_total = 9
+
+[dns]
+# Custom DNS servers used for SRV / A-record resolution (IPv4 or IPv6).
+# Up to three: one primary and two secondary. Leave empty to use the system DNS.
+# Env: MINESTATUS_DNS_PRIMARY / MINESTATUS_DNS_SECONDARY1 / MINESTATUS_DNS_SECONDARY2
+primary = ""
+secondary1 = ""
+secondary2 = ""

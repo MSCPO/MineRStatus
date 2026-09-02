@@ -19,6 +19,13 @@ GET /
 GET /?ip=play.example.com
 ```
 
+当 Java 地址**未指定端口**时,会自动解析 `_minecraft._tcp.<host>`
+SRV 记录(与官方客户端一致)后再连接;指定端口则跳过 SRV:
+
+```
+GET /java/?ip=play.example.com:25565
+```
+
 在 `ip` 值后追加 `/icon` 可返回 Java 服务器图标的 PNG 图片而不是 JSON
 (服务器图标仅 Java 有;服务器不可达或无图标时返回 `404`):
 

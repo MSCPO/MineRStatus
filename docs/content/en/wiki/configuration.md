@@ -44,6 +44,28 @@ disables caching entirely.
 | `timeout` | `8` | `MINESTATUS_TIMEOUT` | Timeout for DNS resolution and connection, in seconds |
 | `max_total` | `9` | `MINESTATUS_MAX_TOTAL` | Total budget for one query including retries, in seconds. Keep it below the platform function execution limit (Vercel Hobby: 10 s) so a failing query returns its JSON error instead of being killed |
 
+### `[dns]`
+
+Up to three custom DNS servers (IPv4 or IPv6) used for SRV / A-record
+resolution. Leave them empty to use the system DNS.
+
+| Key | Default | Env var | Description |
+|---|---|---|---|
+| `primary` | *(empty)* | `MINESTATUS_DNS_PRIMARY` | Primary DNS server |
+| `secondary1` | *(empty)* | `MINESTATUS_DNS_SECONDARY1` | First secondary DNS server |
+| `secondary2` | *(empty)* | `MINESTATUS_DNS_SECONDARY2` | Second secondary DNS server |
+
+```toml
+[dns]
+primary = "223.5.5.5"
+secondary1 = "119.29.29.29"
+secondary2 = "2400:3200::1"   # IPv6 is supported
+```
+
+When custom servers are configured, both SRV and A-record queries go through
+them; otherwise the system DNS is used (with a DNS-over-HTTPS fallback for
+SRV).
+
 ## Precedence Example
 
 To run on port `8080` for one session without touching `config.toml`:

@@ -19,6 +19,14 @@ Tries Java and Bedrock in parallel and returns the first successful result.
 GET /?ip=play.example.com
 ```
 
+When a Java address has **no explicit port**, the `_minecraft._tcp.<host>`
+SRV record is resolved automatically (like the official client) before
+connecting; provide an explicit port to skip SRV:
+
+```
+GET /java/?ip=play.example.com:25565
+```
+
 Appending `/icon` to the `ip` value returns the Java server icon as a PNG
 image instead of JSON (servers icons exist for Java only; `404` when the
 server is unreachable or has no icon):
@@ -26,6 +34,10 @@ server is unreachable or has no icon):
 ```
 GET /?ip=play.example.com/icon
 ```
+
+For Java addresses without an explicit port, the `_minecraft._tcp.<host>`
+SRV record is resolved automatically (like the official client) and the
+server is queried at the SRV target; an explicit port skips SRV.
 
 ## Query a Java Edition server
 
