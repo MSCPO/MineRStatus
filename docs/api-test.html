@@ -66,6 +66,7 @@
         <span class="f br"></span>
         <h2 data-i18n="apiTest.responseTitle"></h2>
         <div class="meta" id="t-meta"></div>
+        <div id="t-srv"></div>
         <pre id="t-pre" data-i18n="apiTest.noRequest"></pre>
       </section>
     </div>
@@ -147,11 +148,14 @@
               if (ct.indexOf("application/json") !== -1) {
                 return res.json().then(function (data) {
                   var pre = document.getElementById("t-pre");
+                  document.getElementById("t-srv").innerHTML =
+                    Docs.serverResultHTML(data, host);
                   pre.innerHTML = Docs.syntaxHighlight(data);
                 });
               }
               return res.blob().then(function (blob) {
                 var pre = document.getElementById("t-pre");
+                document.getElementById("t-srv").innerHTML = "";
                 if (blob.type.indexOf("image/") === 0) {
                   var url2 = URL.createObjectURL(blob);
                   pre.textContent = Docs.t("apiTest.iconReceived", {
@@ -176,6 +180,7 @@
             .catch(function (e) {
               var pre = document.getElementById("t-pre");
               pre.innerHTML = "";
+              document.getElementById("t-srv").innerHTML = "";
               pre.textContent = Docs.t("apiTest.requestFailed", {
                 error: String(e),
               });

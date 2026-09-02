@@ -200,6 +200,58 @@
     return base.replace(/\/+$/, "");
   }
 
+  /**
+   * Render a server status result as a blueprint panel:
+   * server icon on the left, host/version/status/motd on the right.
+   * All dynamic text is escaped; the icon is only used as an <img> when it
+   * is a PNG/JPEG/GIF/WebP data URI.
+   */
+  function serverResultHTML(data, host) {
+    var ok = !!(data && data.online === true);
+    var icon = (data && data.icon) || "";
+    var img;
+    if (/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(icon)) {
+      img = '<img src="' + icon + '" alt="server icon" />';
+    } else {
+      img =
+        '<span class="srv-ni">' + (ok ? "NO ICON" : "OFFLINE") + "</span>";
+    }
+
+    var ver = data && data.version ? escapeHtml(data.version) : "";
+    var delay = data && data.delay != null ? data.delay + " ms" : "";
+    var players =
+      data && data.players
+        ? data.players.online + "/" + data.players.max
+        : "";
+    var motd = "";
+    if (data && data.motd) {
+      motd = escapeHtml(data.motd.plain || data.motd.minecraft || "");
+    }
+    var err = "";
+    if (!ok && data && data.error) err = escapeHtml(data.error);
+
+    var status = ok
+      ? '<span class="pill ok">' + escapeHtml(t("index.statusOnline")) + "</span>"
+      : '<span class="pill err">' + escapeHtml(t("index.statusOffline")) + "</span>";
+
+    return (
+      '<div class="srv">' +
+      '<div class="srv-icon">' + img + "</div>" +
+      '<div class="srv-info">' +
+      '<div class="srv-head">' +
+      '<span class="srv-host">' + escapeHtml(host) + "</span>" +
+      (ver ? '<span class="srv-ver">' + ver + "</span>" : "") +
+      status +
+      (delay ? '<span class="pill">' + delay + "</span>" : "") +
+      (players ? '<span class="pill">' + players + "</span>" : "") +
+      "</div>" +
+      (motd ? '<div class="srv-motd">' + motd + "</div>" : "") +
+      (err ? '<div class="srv-error">' + err + "</div>" : "") +
+      "</div>" +
+      "</div>"
+    );
+  }
+
   window.Docs = {
     currentLang: currentLang,
     availableLangs: availableLangs,
@@ -209,6 +261,7 @@
     apiBase: apiBase,
     escapeHtml: escapeHtml,
     syntaxHighlight: syntaxHighlight,
+    serverResultHTML: serverResultHTML,
     applyI18n: applyI18n,
   };
 

@@ -81,6 +81,7 @@
         </div>
         <div class="result" id="qq-result">
           <div class="meta" id="qq-meta"></div>
+          <div id="qq-srv"></div>
           <pre id="qq-pre"></pre>
         </div>
       </section>
@@ -154,11 +155,14 @@
                 r.ms +
                 " ms</span>" +
                 (info ? '<span class="pill">' + info + "</span>" : "");
+              document.getElementById("qq-srv").innerHTML =
+                Docs.serverResultHTML(r.data, host);
               pre.innerHTML = Docs.syntaxHighlight(r.data);
               result.classList.add("show");
             })
             .catch(function (e) {
               var result = document.getElementById("qq-result");
+              document.getElementById("qq-srv").innerHTML = "";
               document.getElementById("qq-meta").innerHTML =
                 '<span class="pill err">' +
                 Docs.t("index.requestFailed") +
