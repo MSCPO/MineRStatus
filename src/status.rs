@@ -27,6 +27,10 @@ pub struct AppState {
     pub client: McClient,
     /// Application-level TTL response cache.
     pub cache: Cache,
+    /// Total wall-clock budget for one query including retries. Capped below
+    /// the serverless execution limit so a failing query returns its JSON
+    /// error instead of being killed by the runtime.
+    pub query_budget: Duration,
 }
 
 impl AppState {
@@ -34,6 +38,7 @@ impl AppState {
         Self {
             client: McClient::builder().timeout(config.query.timeout).build(),
             cache: Cache::new(config.cache.ttl, config.cache.max_size),
+            query_budget: config.query.max_total,
         }
     }
 }
@@ -163,17 +168,27 @@ fn should_retry(err: &McError) -> bool {
 }
 
 /// Query a Java server with retries on transient network errors.
-async fn java_with_retry(client: &McClient, host: &str) -> Result<StatusResponse, QueryError> {
+///
+/// The whole attempt sequence is bounded by the state's `query_budget`, so a
+/// blocked/unreachable server returns its JSON error well before any serverless
+/// execution limit is reached.
+async fn java_with_retry(state: &AppState, host: &str) -> Result<StatusResponse, QueryError> {
+    let deadline = tokio::time::Instant::now() + state.query_budget;
     let mut last: Option<McError> = None;
     for _ in 0..MAX_ATTEMPTS {
-        match client.java(host).await {
-            Ok(status) => return Ok(build_java_response(&status)),
-            Err(err) if !should_retry(&err) => {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match tokio::time::timeout(remaining, state.client.java(host)).await {
+            Ok(Ok(status)) => return Ok(build_java_response(&status)),
+            Ok(Err(err)) if !should_retry(&err) => {
                 return Err(QueryError(format!(
                     "Failed to connect to Java server at {host}: {err}"
                 )));
             }
-            Err(err) => last = Some(err),
+            Ok(Err(err)) => last = Some(err),
+            Err(_) => break, // budget exhausted
         }
     }
     Err(QueryError(format!(
@@ -183,17 +198,27 @@ async fn java_with_retry(client: &McClient, host: &str) -> Result<StatusResponse
 }
 
 /// Query a Bedrock server with retries on transient network errors.
-async fn bedrock_with_retry(client: &McClient, host: &str) -> Result<StatusResponse, QueryError> {
+///
+/// The whole attempt sequence is bounded by the state's `query_budget`, so a
+/// blocked/unreachable server returns its JSON error well before any serverless
+/// execution limit is reached.
+async fn bedrock_with_retry(state: &AppState, host: &str) -> Result<StatusResponse, QueryError> {
+    let deadline = tokio::time::Instant::now() + state.query_budget;
     let mut last: Option<McError> = None;
     for _ in 0..MAX_ATTEMPTS {
-        match client.bedrock(host).await {
-            Ok(status) => return Ok(build_bedrock_response(&status)),
-            Err(err) if !should_retry(&err) => {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match tokio::time::timeout(remaining, state.client.bedrock(host)).await {
+            Ok(Ok(status)) => return Ok(build_bedrock_response(&status)),
+            Ok(Err(err)) if !should_retry(&err) => {
                 return Err(QueryError(format!(
                     "Failed to connect to Bedrock server at {host}: {err}"
                 )));
             }
-            Err(err) => last = Some(err),
+            Ok(Err(err)) => last = Some(err),
+            Err(_) => break, // budget exhausted
         }
     }
     Err(QueryError(format!(
@@ -211,7 +236,7 @@ pub async fn query_java(
     if use_cache && let Some(resp) = state.cache.get(&key).await {
         return Ok(resp);
     }
-    let resp = java_with_retry(&state.client, host).await?;
+    let resp = java_with_retry(state, host).await?;
     if use_cache {
         state.cache.insert(key, resp.clone()).await;
     }
@@ -227,7 +252,7 @@ pub async fn query_bedrock(
     if use_cache && let Some(resp) = state.cache.get(&key).await {
         return Ok(resp);
     }
-    let resp = bedrock_with_retry(&state.client, host).await?;
+    let resp = bedrock_with_retry(state, host).await?;
     if use_cache {
         state.cache.insert(key, resp.clone()).await;
     }
@@ -254,8 +279,8 @@ pub async fn query_unclassified(
         }
     }
 
-    let java = java_with_retry(&state.client, host);
-    let bedrock = bedrock_with_retry(&state.client, host);
+    let java = java_with_retry(state, host);
+    let bedrock = bedrock_with_retry(state, host);
     tokio::pin!(java);
     tokio::pin!(bedrock);
     let mut java_done = false;

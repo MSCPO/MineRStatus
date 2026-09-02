@@ -11,10 +11,12 @@ with an error body:
 }
 ```
 
-Transient **timeouts and connection failures are retried up to 3 times** before
-the error is returned — a server behind regional firewalls or anti-DDoS
-protection may intermittently drop connections, and a quick retry often gets
-through. DNS resolution failures are not retried.
+Transient **timeouts and connection failures are retried** before the error is
+returned — a server behind regional firewalls or anti-DDoS protection may
+intermittently drop connections, and a quick retry often gets through. DNS
+resolution failures are not retried. The whole attempt sequence is bounded by
+a total budget (`query.max_total`, default 9 s) so the API returns its JSON
+error before any serverless execution limit is reached.
 
 For the auto-detect endpoint, when both protocols fail:
 

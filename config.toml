@@ -23,3 +23,9 @@ max_size = 100
 # Timeout for DNS resolution and connection in seconds
 # Env: MINESTATUS_TIMEOUT
 timeout = 8
+
+# Total time budget for a query including retries (seconds).
+# Must stay below the platform function execution limit (Vercel Hobby: 10s),
+# otherwise the runtime kills the function before the JSON error is returned.
+# Env: MINESTATUS_MAX_TOTAL
+max_total = 9

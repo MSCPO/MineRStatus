@@ -41,6 +41,7 @@ timeout = 8        # 环境变量:MINESTATUS_TIMEOUT    (秒)
 | 键 | 默认值 | 环境变量 | 说明 |
 |---|---|---|---|
 | `timeout` | `8` | `MINESTATUS_TIMEOUT` | DNS 解析与连接超时(秒) |
+| `max_total` | `9` | `MINESTATUS_MAX_TOTAL` | 单次查询含重试的总预算(秒)。请保持在平台函数执行时长上限之下(Vercel Hobby 为 10 秒),否则查询失败时会被运行时杀掉而不是返回 JSON 错误 |
 
 ## 优先级示例
 

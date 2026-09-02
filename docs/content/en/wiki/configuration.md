@@ -42,6 +42,7 @@ disables caching entirely.
 | Key | Default | Env var | Description |
 |---|---|---|---|
 | `timeout` | `8` | `MINESTATUS_TIMEOUT` | Timeout for DNS resolution and connection, in seconds |
+| `max_total` | `9` | `MINESTATUS_MAX_TOTAL` | Total budget for one query including retries, in seconds. Keep it below the platform function execution limit (Vercel Hobby: 10 s) so a failing query returns its JSON error instead of being killed |
 
 ## Precedence Example
 

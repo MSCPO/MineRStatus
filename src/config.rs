@@ -26,6 +26,7 @@ pub struct CacheConfig {
 #[derive(Debug, Clone)]
 pub struct QueryConfig {
     pub timeout: Duration,
+    pub max_total: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +49,7 @@ impl Default for Config {
             },
             query: QueryConfig {
                 timeout: Duration::from_secs(8),
+                max_total: Duration::from_secs(9),
             },
         }
     }
@@ -112,6 +114,9 @@ pub fn load() -> Config {
     // [query]
     let timeout = int_or::<8>(&root, "query", "timeout");
     result.query.timeout = Duration::from_secs(u64::try_from(timeout).unwrap_or(8));
+
+    let max_total = int_or::<9>(&root, "query", "max_total");
+    result.query.max_total = Duration::from_secs(u64::try_from(max_total).unwrap_or(9));
 
     result
 }
