@@ -44,3 +44,8 @@ cargo build --release --no-default-features
   可能会较慢或被间歇性丢弃。如果自托管,请选择离目标服务器较近的区域;在
   Vercel 上,若默认的 8 秒超时不够,可通过 `MINESTATUS_TIMEOUT` 调大,但
   不要超过函数执行时长上限。
+- **Fluid compute**:Vercel 的 Fluid compute(新项目默认开启)会根据负载与
+  可用性动态放置函数实例,可能让实际执行区域与出口 IP 偏离你配置的区域,
+  而部分服务器会封锁这些 IP 段。为让出口可预测,请在 `vercel.json` 固定
+  区域(`"regions": ["sin1"]`,可覆盖 Fluid 默认值),并在项目设置的
+  Functions 中关闭 Fluid compute,然后重新部署。

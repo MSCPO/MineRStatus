@@ -47,3 +47,10 @@ cargo build --release --no-default-features
   intermittently dropped. If you self-host, pick a region close to the servers
   you query; on Vercel you can raise `MINESTATUS_TIMEOUT` if the default 8 s
   is too tight, but keep it below the function execution limit.
+- **Fluid compute**: Vercel's Fluid compute (the default for new projects)
+  dynamically places function instances based on load and availability, which
+  can move the actual execution region and egress IP away from the configured
+  one. Some servers block those IP ranges. To make egress predictable, pin the
+  region in `vercel.json` (`"regions": ["sin1"]`, which overrides Fluid
+  defaults) and disable Fluid compute under Project Settings → Functions, then
+  redeploy.
