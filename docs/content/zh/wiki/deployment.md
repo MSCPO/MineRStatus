@@ -40,3 +40,7 @@ cargo build --release --no-default-features
 - `vercel` feature 会链接上游 `vercel_runtime` crate,该 crate 在 Vercel 自身
   的构建环境之外无法编译。本地构建请使用 `--no-default-features` —— CI 也是
   这样运行的。
+- 当查询距离部署区域较远的服务器时(例如从美区部署查询中国服务器),连接
+  可能会较慢或被间歇性丢弃。如果自托管,请选择离目标服务器较近的区域;在
+  Vercel 上,若默认的 8 秒超时不够,可通过 `MINESTATUS_TIMEOUT` 调大,但
+  不要超过函数执行时长上限。

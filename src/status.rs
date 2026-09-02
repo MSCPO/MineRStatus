@@ -8,7 +8,8 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use rust_mc_status::{
-    BedrockServerStatus, JavaServerStatus, McClient, StatusExt, strip_formatting,
+    BedrockServerStatus, JavaServerStatus, McClient, McError, NetworkError, StatusExt,
+    strip_formatting,
 };
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -142,6 +143,65 @@ pub struct ErrorResponse {
 // Query functions
 // ---------------------------------------------------------------------------
 
+/// Maximum total attempts per status query (the original plus retries).
+///
+/// Some servers (e.g. behind regional firewalls or anti-DDoS protection)
+/// intermittently drop connections from distant regions — a transient timeout
+/// that a quick retry usually gets past.
+const MAX_ATTEMPTS: usize = 3;
+
+/// Whether a query error is worth retrying.
+///
+/// Retries timeouts and connection failures, which may be transient. DNS
+/// failures are not retried — the hostname is unlikely to resolve on a second
+/// attempt.
+fn should_retry(err: &McError) -> bool {
+    matches!(
+        err,
+        McError::Network(NetworkError::Timeout | NetworkError::Connection(_))
+    )
+}
+
+/// Query a Java server with retries on transient network errors.
+async fn java_with_retry(client: &McClient, host: &str) -> Result<StatusResponse, QueryError> {
+    let mut last: Option<McError> = None;
+    for _ in 0..MAX_ATTEMPTS {
+        match client.java(host).await {
+            Ok(status) => return Ok(build_java_response(&status)),
+            Err(err) if !should_retry(&err) => {
+                return Err(QueryError(format!(
+                    "Failed to connect to Java server at {host}: {err}"
+                )));
+            }
+            Err(err) => last = Some(err),
+        }
+    }
+    Err(QueryError(format!(
+        "Failed to connect to Java server at {host}: {}",
+        last.as_ref().map(ToString::to_string).unwrap_or_default()
+    )))
+}
+
+/// Query a Bedrock server with retries on transient network errors.
+async fn bedrock_with_retry(client: &McClient, host: &str) -> Result<StatusResponse, QueryError> {
+    let mut last: Option<McError> = None;
+    for _ in 0..MAX_ATTEMPTS {
+        match client.bedrock(host).await {
+            Ok(status) => return Ok(build_bedrock_response(&status)),
+            Err(err) if !should_retry(&err) => {
+                return Err(QueryError(format!(
+                    "Failed to connect to Bedrock server at {host}: {err}"
+                )));
+            }
+            Err(err) => last = Some(err),
+        }
+    }
+    Err(QueryError(format!(
+        "Failed to connect to Bedrock server at {host}: {}",
+        last.as_ref().map(ToString::to_string).unwrap_or_default()
+    )))
+}
+
 pub async fn query_java(
     state: &AppState,
     host: &str,
@@ -151,18 +211,11 @@ pub async fn query_java(
     if use_cache && let Some(resp) = state.cache.get(&key).await {
         return Ok(resp);
     }
-    match state.client.java(host).await {
-        Ok(status) => {
-            let resp = build_java_response(&status);
-            if use_cache {
-                state.cache.insert(key, resp.clone()).await;
-            }
-            Ok(resp)
-        }
-        Err(err) => Err(QueryError(format!(
-            "Failed to connect to Java server at {host}: {err}"
-        ))),
+    let resp = java_with_retry(&state.client, host).await?;
+    if use_cache {
+        state.cache.insert(key, resp.clone()).await;
     }
+    Ok(resp)
 }
 
 pub async fn query_bedrock(
@@ -174,18 +227,11 @@ pub async fn query_bedrock(
     if use_cache && let Some(resp) = state.cache.get(&key).await {
         return Ok(resp);
     }
-    match state.client.bedrock(host).await {
-        Ok(status) => {
-            let resp = build_bedrock_response(&status);
-            if use_cache {
-                state.cache.insert(key, resp.clone()).await;
-            }
-            Ok(resp)
-        }
-        Err(err) => Err(QueryError(format!(
-            "Failed to connect to Bedrock server at {host}: {err}"
-        ))),
+    let resp = bedrock_with_retry(&state.client, host).await?;
+    if use_cache {
+        state.cache.insert(key, resp.clone()).await;
     }
+    Ok(resp)
 }
 
 /// Probe Java and Bedrock in parallel; return the first successful result.
@@ -208,8 +254,10 @@ pub async fn query_unclassified(
         }
     }
 
-    let mut java = state.client.java(host).into_future();
-    let mut bedrock = state.client.bedrock(host).into_future();
+    let java = java_with_retry(&state.client, host);
+    let bedrock = bedrock_with_retry(&state.client, host);
+    tokio::pin!(java);
+    tokio::pin!(bedrock);
     let mut java_done = false;
     let mut bedrock_done = false;
 
@@ -217,8 +265,7 @@ pub async fn query_unclassified(
         tokio::select! {
             r = &mut java, if !java_done => {
                 java_done = true;
-                if let Ok(status) = r {
-                    let resp = build_java_response(&status);
+                if let Ok(resp) = r {
                     if use_cache {
                         state.cache.insert(format!("java:{host}"), resp.clone()).await;
                     }
@@ -227,8 +274,7 @@ pub async fn query_unclassified(
             }
             r = &mut bedrock, if !bedrock_done => {
                 bedrock_done = true;
-                if let Ok(status) = r {
-                    let resp = build_bedrock_response(&status);
+                if let Ok(resp) = r {
                     if use_cache {
                         state.cache.insert(format!("bedrock:{host}"), resp.clone()).await;
                     }
@@ -498,5 +544,17 @@ mod tests {
         assert!(cache.get("java:a").await.is_none());
         assert!(cache.get("java:b").await.is_some());
         assert!(cache.get("java:c").await.is_some());
+    }
+
+    #[test]
+    fn retries_on_transient_network_errors() {
+        use rust_mc_status::{McError, NetworkError};
+        assert!(should_retry(&McError::Network(NetworkError::Timeout)));
+        assert!(should_retry(&McError::Network(NetworkError::Connection(
+            "connection refused".to_string()
+        ))));
+        assert!(!should_retry(&McError::Network(NetworkError::Dns(
+            "nxdomain".to_string()
+        ))));
     }
 }
