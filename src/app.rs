@@ -233,6 +233,41 @@ async fn health() -> Json<serde_json::Value> {
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/debug/egress-ip",
+    tag = "Debug",
+    responses(
+        (status = 200, description = "The function's outbound (egress) IP, from an IP echo service"),
+    ),
+)]
+async fn debug_egress_ip() -> Json<serde_json::Value> {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let client = CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(8))
+            .build()
+            .expect("failed to build HTTP client")
+    });
+
+    // Try a couple of IP echo services and return the first success.
+    let endpoints = [
+        "https://api.ipify.org?format=json",
+        "https://ipinfo.io/json",
+    ];
+    for url in endpoints {
+        if let Ok(resp) = client.get(url).send().await
+            && resp.status().is_success()
+            && let Ok(v) = resp.json::<serde_json::Value>().await
+        {
+            return Json(v);
+        }
+    }
+    Json(serde_json::json!({
+        "error": "failed to determine egress IP"
+    }))
+}
+
 // ---------------------------------------------------------------------------
 // OpenAPI / Swagger
 // ---------------------------------------------------------------------------
@@ -274,9 +309,10 @@ pub fn router(state: AppState) -> Router {
         .route("/bedrock", get(status_bedrock))
         .route("/bedrock/", get(status_bedrock))
         .route("/health", get(health))
+        .route("/debug/egress-ip", get(debug_egress_ip))
         .with_state(state);
 
-    app.merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
+    app.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
 }
