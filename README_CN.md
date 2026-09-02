@@ -23,6 +23,28 @@
 - OpenAPI / Swagger UI 文档
 - 通过 `config.toml` 或 `MINESTATUS_*` 环境变量配置
 
+## 文档
+
+仓库自带静态文档站点，位于 `docs/` 目录：
+
+- `docs/index.html` — 首页
+- `docs/wiki.html` — Wiki（markdown，客户端渲染）
+- `docs/api-test.html` — 在线 API 测试页
+
+内容按语言放在 `docs/content/<语言代码>/` 下：
+
+- `language.json` — 站点的 UI 文案（缺失的字段会回退到 `en`）
+- `wiki/*.md` — 该语言的 Wiki 页面
+
+语言根据浏览器自动检测（`?lang=` 可覆盖；导航中的语言选择器会记住选择）。
+Wiki 的 markdown 与 UI 文案会被打包进 `*.js` 文件，以保证即使直接以
+`file://` 打开页面（浏览器会禁用 `fetch()`）也能正常渲染。编辑任何内容后
+需重新构建：
+
+```
+node docs/build.js
+```
+
 ## API
 
 所有端点均接受查询参数 `ip`（服务器地址，必填）和 `cache`（是否使用缓存，可选，默认 `true`）。

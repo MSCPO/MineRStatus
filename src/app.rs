@@ -103,8 +103,13 @@ impl std::ops::Deref for ValidatedQuery {
     responses(
         (
             status = 200,
-            description = "Server status (or an error message when unreachable)",
+            description = "Server status (or an error message when unreachable), or the icon PNG when ip ends with /icon",
             body = StatusResponse,
+        ),
+        (
+            status = 404,
+            description = "Icon: server unreachable or no icon available",
+            body = ErrorResponse,
         ),
     ),
 )]
@@ -112,7 +117,12 @@ async fn status_unclassified(
     State(state): State<AppState>,
     ValidatedQuery(params): ValidatedQuery,
 ) -> Response {
-    match crate::status::query_unclassified(&state, &params.ip, params.use_cache()).await {
+    let use_cache = params.use_cache();
+    if params.ip.ends_with("/icon") {
+        let host = &params.ip[..params.ip.len() - "/icon".len()];
+        return get_java_icon(&state, host, use_cache).await;
+    }
+    match crate::status::query_unclassified(&state, &params.ip, use_cache).await {
         Ok(resp) => Json(resp).into_response(),
         Err(err) => Json(ErrorResponse { error: err.0 }).into_response(),
     }

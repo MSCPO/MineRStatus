@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n-doc-title="docTitle.wiki">Wiki — MineRStatus</title>
+    <link rel="stylesheet" href="assets/style.css" />
+    <script src="content/en/ui.js"></script>
+    <script src="content/zh/ui.js"></script>
+    <script src="content/en/wiki/markdown.js"></script>
+    <script src="content/zh/wiki/markdown.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="wiki">
+        <aside class="sidebar" id="wiki-nav"></aside>
+        <main class="content frame">
+          <span class="f tl"></span>
+          <span class="f tr"></span>
+          <span class="f bl"></span>
+          <span class="f br"></span>
+          <span class="coords" style="position: absolute; top: 8px; right: 10px">X:043 // Y:003</span>
+          <div id="wiki-body"><p data-i18n="wiki.loading"></p></div>
+        </main>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <span class="coords">X:044 // Y:004</span><br />
+      MineRStatus — <span data-i18n="footer.poweredBy"></span>
+      <a href="https://github.com/MSCPO/MineRStatus">MSCPO/MineRStatus</a>
+    </footer>
+
+    <script src="assets/vendor/marked.min.js"></script>
+    <script src="assets/app.js"></script>
+    <script>
+      (function () {
+        var ORDER = ["home", "endpoints", "deployment", "configuration", "errors"];
+
+        var params = Docs.queryParams();
+        var slug = params.p || params.page || "home";
+        if (ORDER.indexOf(slug) === -1) slug = "home";
+
+        // Sidebar: page titles come from language.json (en fallback).
+        var nav = document.getElementById("wiki-nav");
+        ORDER.forEach(function (s) {
+          var a = document.createElement("a");
+          a.href = "wiki.html?p=" + s;
+          a.textContent = Docs.t("wiki.pages." + s);
+          if (s === slug) a.className = "active";
+          nav.appendChild(a);
+        });
+
+        document.title =
+          Docs.t("wiki.pages." + slug) + " — Wiki · MineRStatus";
+
+        var body = document.getElementById("wiki-body");
+        var lang = Docs.currentLang();
+
+        // Markdown is bundled per language (loaded via <script>, so it works
+        // on the file:// protocol where fetch() is blocked). Fall back to
+        // English when the current language has no bundle for this page.
+        var md =
+          (window.WIKI_MARKDOWN &&
+            window.WIKI_MARKDOWN[lang] &&
+            window.WIKI_MARKDOWN[lang][slug]) ||
+          (window.WIKI_MARKDOWN &&
+            window.WIKI_MARKDOWN.en &&
+            window.WIKI_MARKDOWN.en[slug]);
+
+        if (!md) {
+          body.innerHTML = "";
+          var p = document.createElement("p");
+          p.style.color = "var(--accent)";
+          p.textContent = Docs.t("wiki.notFound", { slug: slug });
+          body.appendChild(p);
+        } else {
+          body.innerHTML = marked.parse(md);
+          // Rewrite relative .md links in wiki markdown to the html shell.
+          body.querySelectorAll("a[href$='.md']").forEach(function (a) {
+            var href = a.getAttribute("href");
+            var name = href.replace(/\.md$/, "").split("/").pop();
+            if (ORDER.indexOf(name) !== -1) {
+              a.href = "wiki.html?p=" + name;
+            }
+          });
+          body.querySelectorAll("pre code").forEach(function (block) {
+            block.textContent = block.textContent.trim();
+          });
+          window.scrollTo({ top: 0 });
+        }
+      })();
+    </script>
+  </body>
+</html>

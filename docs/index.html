@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n-doc-title="docTitle.index">MineRStatus</title>
+    <link rel="stylesheet" href="assets/style.css" />
+    <script src="content/en/ui.js"></script>
+    <script src="content/zh/ui.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <header class="hero frame">
+        <span class="f tl"></span>
+        <span class="f tr"></span>
+        <span class="f bl"></span>
+        <span class="f br"></span>
+        <span class="coords" style="position: absolute; top: 8px; right: 10px">X:041 // Y:001</span>
+        <span class="coords" style="position: absolute; bottom: 8px; left: 10px">SCALE:1:1 // REV:0.1.0</span>
+
+        <h1>MineRStatus</h1>
+        <p class="tagline" data-i18n="index.tagline"></p>
+        <div class="badges" id="badges"></div>
+      </header>
+
+      <div class="rule" style="margin-top: 24px" data-i18n="index.sectionComponents"></div>
+
+      <div class="grid">
+        <a class="card frame" href="api-test.html">
+          <span class="f tl"></span>
+          <span class="f br"></span>
+          <span class="card-idx">01</span>
+          <span class="ico">&#9889;</span>
+          <h3 data-i18n="index.cards.apiTest.title"></h3>
+          <p data-i18n="index.cards.apiTest.desc"></p>
+          <span class="coord-mark">A-01</span>
+        </a>
+        <a class="card frame" href="wiki.html">
+          <span class="f tl"></span>
+          <span class="f br"></span>
+          <span class="card-idx">02</span>
+          <span class="ico">&#128214;</span>
+          <h3 data-i18n="index.cards.wiki.title"></h3>
+          <p data-i18n="index.cards.wiki.desc"></p>
+          <span class="coord-mark">A-02</span>
+        </a>
+        <a class="card frame" href="https://v3.mscpo.giize.com/api-docs/">
+          <span class="f tl"></span>
+          <span class="f br"></span>
+          <span class="card-idx">03</span>
+          <span class="ico">&#128737;</span>
+          <h3 data-i18n="index.cards.swagger.title"></h3>
+          <p data-i18n="index.cards.swagger.desc"></p>
+          <span class="coord-mark">A-03</span>
+        </a>
+        <a class="card frame" href="https://v3.mscpo.giize.com/api-docs/openapi.json">
+          <span class="f tl"></span>
+          <span class="f br"></span>
+          <span class="card-idx">04</span>
+          <span class="ico">&#123;</span>
+          <h3 data-i18n="index.cards.openapi.title"></h3>
+          <p data-i18n="index.cards.openapi.desc"></p>
+          <span class="coord-mark">A-04</span>
+        </a>
+      </div>
+
+      <section class="widget frame">
+        <span class="f tl"></span>
+        <span class="f tr"></span>
+        <span class="f bl"></span>
+        <span class="f br"></span>
+        <h2 data-i18n="index.quickQueryTitle"></h2>
+        <div class="row">
+          <input
+            type="text"
+            id="qq-ip"
+            placeholder="mc.hypixel.net"
+            spellcheck="false"
+          />
+          <button id="qq-run" class="btn-primary" data-i18n="index.queryBtn"></button>
+        </div>
+        <div class="result" id="qq-result">
+          <div class="meta" id="qq-meta"></div>
+          <pre id="qq-pre"></pre>
+        </div>
+      </section>
+    </div>
+
+    <footer class="footer">
+      <span class="coords">X:042 // Y:002</span><br />
+      MineRStatus — <span data-i18n="footer.poweredBy"></span>
+      <a href="https://github.com/MSCPO/MineRStatus">MSCPO/MineRStatus</a>
+    </footer>
+
+    <script src="assets/app.js"></script>
+    <script>
+      (function () {
+        var badges = (Docs.t("index.badges") || []).slice();
+        var el = document.getElementById("badges");
+        badges.forEach(function (b) {
+          var s = document.createElement("span");
+          s.className = "badge";
+          s.textContent = b;
+          el.appendChild(s);
+        });
+
+        var btn = document.getElementById("qq-run");
+        var ip = document.getElementById("qq-ip");
+        var apiBase = Docs.apiBase();
+
+        function run() {
+          // Empty host -> the default server.
+          var host = ip.value.trim() || "mc.hypixel.net";
+          btn.disabled = true;
+          btn.textContent = Docs.t("index.queryingBtn");
+          var t0 = performance.now();
+          fetch(apiBase + "/?ip=" + encodeURIComponent(host), {
+            headers: { Accept: "application/json" },
+          })
+            .then(function (res) {
+              var ms = Math.round(performance.now() - t0);
+              return res.json().then(function (data) {
+                return { status: res.status, ms: ms, data: data };
+              });
+            })
+            .then(function (r) {
+              var result = document.getElementById("qq-result");
+              var meta = document.getElementById("qq-meta");
+              var pre = document.getElementById("qq-pre");
+              var ok = r.data && r.data.online === true;
+              var online = ok
+                ? Docs.t("index.statusOnline")
+                : Docs.t("index.statusOffline");
+              var info = "";
+              if (r.data && r.data.players) {
+                info = Docs.t("index.players", {
+                  online: r.data.players.online,
+                  max: r.data.players.max,
+                });
+              }
+              if (r.data && r.data.version) info += " \u00b7 " + r.data.version;
+              if (r.data && r.data.delay != null)
+                info += " \u00b7 " + r.data.delay + " ms";
+              meta.innerHTML =
+                '<span class="pill ' +
+                (ok ? "ok" : "err") +
+                '">' +
+                online +
+                "</span>" +
+                '<span class="pill">HTTP ' +
+                r.status +
+                "</span>" +
+                '<span class="pill">' +
+                r.ms +
+                " ms</span>" +
+                (info ? '<span class="pill">' + info + "</span>" : "");
+              pre.innerHTML = Docs.syntaxHighlight(r.data);
+              result.classList.add("show");
+            })
+            .catch(function (e) {
+              var result = document.getElementById("qq-result");
+              document.getElementById("qq-meta").innerHTML =
+                '<span class="pill err">' +
+                Docs.t("index.requestFailed") +
+                "</span>";
+              document.getElementById("qq-pre").textContent = String(e);
+              result.classList.add("show");
+            })
+            .finally(function () {
+              btn.disabled = false;
+              btn.textContent = Docs.t("index.queryBtn");
+            });
+        }
+
+        btn.addEventListener("click", run);
+        ip.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") run();
+        });
+      })();
+    </script>
+  </body>
+</html>

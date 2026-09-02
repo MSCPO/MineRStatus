@@ -23,6 +23,28 @@ A lightweight and simple Minecraft server query API written in **Rust**, and a r
 - OpenAPI / Swagger UI documentation
 - Configuration via `config.toml` or `MINESTATUS_*` environment variables
 
+## Docs
+
+A static documentation site ships in the `docs/` directory:
+
+- `docs/index.html` — landing page
+- `docs/wiki.html` — Wiki (markdown, rendered client-side)
+- `docs/api-test.html` — live API test page
+
+Content is organized per language under `docs/content/<lang>/`:
+
+- `language.json` — UI strings for the site (missing keys fall back to `en`)
+- `wiki/*.md` — the wiki pages in that language
+
+Languages are auto-detected from the browser (`?lang=` overrides; the language
+selector in the nav persists the choice). The wiki markdown and UI strings are
+bundled into `*.js` files so the pages work even when opened directly from disk
+(`file://`, where `fetch()` is blocked). Rebuild after editing any content:
+
+```
+node docs/build.js
+```
+
 ## API
 
 All endpoints take the query parameters `ip` (server address, required) and `cache` (use cached result, optional, defaults to `true`).

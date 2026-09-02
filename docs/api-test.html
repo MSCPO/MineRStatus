@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n-doc-title="docTitle.apiTest">API Test — MineRStatus</title>
+    <link rel="stylesheet" href="assets/style.css" />
+    <script src="content/en/ui.js"></script>
+    <script src="content/zh/ui.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <header class="hero frame" style="padding: 32px 28px">
+        <span class="f tl"></span>
+        <span class="f tr"></span>
+        <span class="f bl"></span>
+        <span class="f br"></span>
+        <span class="coords" style="position: absolute; top: 8px; right: 10px">X:045 // Y:005</span>
+
+        <h1 style="font-size: 34px" data-i18n="nav.apiTest"></h1>
+        <p class="tagline" data-i18n="apiTest.subtitle"></p>
+      </header>
+
+      <section class="widget frame">
+        <span class="f tl"></span>
+        <span class="f tr"></span>
+        <span class="f bl"></span>
+        <span class="f br"></span>
+        <h2 data-i18n="apiTest.requestTitle"></h2>
+        <div class="row" style="margin-bottom: 12px">
+          <label class="check" style="white-space: nowrap" data-i18n="apiTest.apiLabel"></label>
+          <input
+            type="text"
+            id="t-api"
+            spellcheck="false"
+            data-i18n-placeholder="apiTest.apiPlaceholder"
+          />
+        </div>
+        <div class="row">
+          <input
+            type="text"
+            id="t-ip"
+            placeholder="mc.hypixel.net"
+            spellcheck="false"
+            data-i18n-placeholder="apiTest.ipPlaceholder"
+          />
+          <select id="t-proto" title="Protocol"></select>
+          <label class="check">
+            <input type="checkbox" id="t-cache" checked />
+            <span data-i18n="apiTest.cacheLabel"></span>
+          </label>
+          <button id="t-run" class="btn-primary" data-i18n="apiTest.sendBtn"></button>
+        </div>
+        <div class="row" style="margin-top: 12px">
+          <label class="check">
+            <input type="checkbox" id="t-icon" />
+            <span data-i18n="apiTest.iconLabel"></span>
+          </label>
+        </div>
+      </section>
+
+      <section class="widget frame">
+        <span class="f tl"></span>
+        <span class="f tr"></span>
+        <span class="f bl"></span>
+        <span class="f br"></span>
+        <h2 data-i18n="apiTest.responseTitle"></h2>
+        <div class="meta" id="t-meta"></div>
+        <pre id="t-pre" data-i18n="apiTest.noRequest"></pre>
+      </section>
+    </div>
+
+    <footer class="footer">
+      <span class="coords">X:046 // Y:006</span><br />
+      MineRStatus — <span data-i18n="footer.poweredBy"></span>
+      <a href="https://github.com/MSCPO/MineRStatus">MSCPO/MineRStatus</a>
+    </footer>
+
+    <script src="assets/app.js"></script>
+    <script>
+      (function () {
+        var btn = document.getElementById("t-run");
+        var ipEl = document.getElementById("t-ip");
+        var protoEl = document.getElementById("t-proto");
+        var cacheEl = document.getElementById("t-cache");
+        var iconEl = document.getElementById("t-icon");
+        var apiEl = document.getElementById("t-api");
+
+        // Prefill the API field from ?api=, otherwise keep the default.
+        var q = Docs.queryParams();
+        if (q.api) apiEl.value = q.api;
+
+        // Protocol options from language.json.
+        ["auto", "java", "bedrock"].forEach(function (v) {
+          var o = document.createElement("option");
+          o.value = v;
+          o.textContent = Docs.t("apiTest.protocolOption." + v);
+          if (v === "auto") o.selected = true;
+          protoEl.appendChild(o);
+        });
+
+        function apiBase() {
+          // Empty field -> the public default. Trailing slashes are stripped
+          // so the endpoint path (/, /java, /bedrock) appends cleanly.
+          var v = apiEl.value.trim();
+          return (v ? v : Docs.apiBase()).replace(/\/+$/, "");
+        }
+
+        function pathFor(proto) {
+          if (proto === "java") return "/java";
+          if (proto === "bedrock") return "/bedrock";
+          return "/";
+        }
+
+        function send() {
+          // Empty host -> the default server.
+          var host = ipEl.value.trim() || Docs.t("apiTest.ipPlaceholder");
+          btn.disabled = true;
+          btn.textContent = Docs.t("apiTest.sendingBtn");
+
+          var icon = iconEl.checked;
+          var proto = protoEl.value;
+          var isIcon = proto === "java" && icon;
+          var base = pathFor(proto);
+          var url =
+            apiBase() +
+            base +
+            "?ip=" +
+            encodeURIComponent(isIcon ? host + "/icon" : host) +
+            "&cache=" +
+            cacheEl.checked;
+
+          var t0 = performance.now();
+          fetch(url, { headers: { Accept: "*/*" } })
+            .then(function (res) {
+              var ms = Math.round(performance.now() - t0);
+              var ct = res.headers.get("content-type") || "";
+              var meta = document.getElementById("t-meta");
+              var cls = res.ok ? "ok" : "err";
+              meta.innerHTML =
+                '<span class="pill ' + cls + '">HTTP ' + res.status + "</span>" +
+                '<span class="pill">' + res.statusText + "</span>" +
+                '<span class="pill">' + ms + " ms</span>" +
+                '<span class="pill">' + ct.split(";")[0] + "</span>" +
+                '<span class="pill">' + apiBase() + "</span>";
+
+              if (ct.indexOf("application/json") !== -1) {
+                return res.json().then(function (data) {
+                  var pre = document.getElementById("t-pre");
+                  pre.innerHTML = Docs.syntaxHighlight(data);
+                });
+              }
+              return res.blob().then(function (blob) {
+                var pre = document.getElementById("t-pre");
+                if (blob.type.indexOf("image/") === 0) {
+                  var url2 = URL.createObjectURL(blob);
+                  pre.textContent = Docs.t("apiTest.iconReceived", {
+                    size: blob.size,
+                  }) + "\n\n" + url2;
+                  var img = document.createElement("img");
+                  img.src = url2;
+                  img.alt = "server icon";
+                  img.style.maxWidth = "64px";
+                  img.style.marginTop = "10px";
+                  img.style.imageRendering = "pixelated";
+                  img.style.border = "1px solid rgba(255,255,255,0.3)";
+                  pre.after(img);
+                } else {
+                  pre.textContent = Docs.t("apiTest.bodyReceived", {
+                    type: blob.type,
+                    size: blob.size,
+                  });
+                }
+              });
+            })
+            .catch(function (e) {
+              var pre = document.getElementById("t-pre");
+              pre.innerHTML = "";
+              pre.textContent = Docs.t("apiTest.requestFailed", {
+                error: String(e),
+              });
+            })
+            .finally(function () {
+              btn.disabled = false;
+              btn.textContent = Docs.t("apiTest.sendBtn");
+            });
+        }
+
+        btn.addEventListener("click", send);
+        ipEl.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") send();
+        });
+      })();
+    </script>
+  </body>
+</html>
