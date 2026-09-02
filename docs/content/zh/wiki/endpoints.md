@@ -72,7 +72,7 @@ GET /health
 ## 文档
 
 ```
-GET /swagger-ui              # Swagger UI
+GET /api-docs                # Swagger UI
 GET /api-docs/openapi.json   # OpenAPI 3.1 规范
 ```
 

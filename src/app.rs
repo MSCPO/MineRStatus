@@ -312,7 +312,7 @@ pub fn router(state: AppState) -> Router {
         .route("/debug/egress-ip", get(debug_egress_ip))
         .with_state(state);
 
-    app.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+    app.merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
 }
