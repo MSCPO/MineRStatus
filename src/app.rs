@@ -49,10 +49,7 @@ where
 {
     type Rejection = Response;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         match Query::<QueryParams>::from_request_parts(parts, state).await {
             Ok(Query(params)) => Ok(ValidatedQuery(params)),
             Err(rejection) => Err(validation_error_response(&rejection)),
@@ -61,9 +58,7 @@ where
 }
 
 /// Build a FastAPI-style 422 response for a query deserialization rejection.
-fn validation_error_response(
-    rejection: &axum::extract::rejection::QueryRejection,
-) -> Response {
+fn validation_error_response(rejection: &axum::extract::rejection::QueryRejection) -> Response {
     let details = match rejection {
         axum::extract::rejection::QueryRejection::FailedToDeserializeQueryString(err) => {
             json!([{
@@ -83,7 +78,11 @@ fn validation_error_response(
         }
     };
 
-    (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "detail": details }))).into_response()
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        Json(json!({ "detail": details })),
+    )
+        .into_response()
 }
 
 impl std::ops::Deref for ValidatedQuery {
@@ -178,11 +177,7 @@ async fn get_java_icon(state: &AppState, host: &str, use_cache: bool) -> Respons
     let resp = match crate::status::query_java(state, host, use_cache).await {
         Ok(resp) => resp,
         Err(err) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse { error: err.0 }),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, Json(ErrorResponse { error: err.0 })).into_response();
         }
     };
 
@@ -196,7 +191,7 @@ async fn get_java_icon(state: &AppState, host: &str, use_cache: bool) -> Respons
             .into_response();
     };
 
-    let encoded = icon.split(',').last().unwrap_or(&icon);
+    let encoded = icon.split(',').next_back().unwrap_or(&icon);
     let bytes = match base64::engine::general_purpose::STANDARD.decode(encoded.trim()) {
         Ok(bytes) => bytes,
         Err(_) => {
@@ -271,9 +266,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .with_state(state);
 
-    app.merge(
-        SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()),
-    )
-    .layer(cors)
-    .layer(TraceLayer::new_for_http())
+    app.merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .layer(cors)
+        .layer(TraceLayer::new_for_http())
 }

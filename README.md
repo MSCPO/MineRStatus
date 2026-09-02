@@ -33,7 +33,7 @@ All endpoints take the query parameters `ip` (server address, required) and `cac
 | GET | `/java` | Query a Java Edition server status |
 | GET | `/bedrock` | Query a Bedrock Edition server status |
 | GET | `/health` | Health check and version |
-| GET | `/swagger-ui` | Swagger UI documentation |
+| GET | `/api-docs` | Swagger UI documentation |
 | GET | `/api-docs/openapi.json` | OpenAPI specification |
 
 > Note: `/java` and `/bedrock` also match their trailing-slash forms (`/java/`, `/bedrock/`).

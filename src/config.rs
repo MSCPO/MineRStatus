@@ -63,29 +63,24 @@ fn env_str(key: &str) -> Option<String> {
 /// TOML wins over the environment, which wins over the default.
 /// `0` is a legitimate value and is never treated as "missing".
 fn int_or<const DEFAULT: i64>(root: &toml::Value, section: &str, name: &str) -> i64 {
-    if let Some(table) = root.get(section).and_then(toml::Value::as_table) {
-        if let Some(n) = table.get(name).and_then(toml::Value::as_integer) {
-            return n;
-        }
+    if let Some(table) = root.get(section).and_then(toml::Value::as_table)
+        && let Some(n) = table.get(name).and_then(toml::Value::as_integer)
+    {
+        return n;
     }
-    if let Some(raw) = env_str(name) {
-        if let Ok(n) = raw.parse::<i64>() {
-            return n;
-        }
+    if let Some(raw) = env_str(name)
+        && let Ok(n) = raw.parse::<i64>()
+    {
+        return n;
     }
     DEFAULT
 }
 
-fn string_or(
-    root: &toml::Value,
-    section: &str,
-    name: &str,
-    default: &str,
-) -> String {
-    if let Some(table) = root.get(section).and_then(toml::Value::as_table) {
-        if let Some(s) = table.get(name).and_then(toml::Value::as_str) {
-            return s.to_string();
-        }
+fn string_or(root: &toml::Value, section: &str, name: &str, default: &str) -> String {
+    if let Some(table) = root.get(section).and_then(toml::Value::as_table)
+        && let Some(s) = table.get(name).and_then(toml::Value::as_str)
+    {
+        return s.to_string();
     }
     env_str(name).unwrap_or_else(|| default.to_string())
 }

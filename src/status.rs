@@ -148,10 +148,8 @@ pub async fn query_java(
     use_cache: bool,
 ) -> Result<StatusResponse, QueryError> {
     let key = format!("java:{host}");
-    if use_cache {
-        if let Some(resp) = state.cache.get(&key).await {
-            return Ok(resp);
-        }
+    if use_cache && let Some(resp) = state.cache.get(&key).await {
+        return Ok(resp);
     }
     match state.client.java(host).await {
         Ok(status) => {
@@ -173,10 +171,8 @@ pub async fn query_bedrock(
     use_cache: bool,
 ) -> Result<StatusResponse, QueryError> {
     let key = format!("bedrock:{host}");
-    if use_cache {
-        if let Some(resp) = state.cache.get(&key).await {
-            return Ok(resp);
-        }
+    if use_cache && let Some(resp) = state.cache.get(&key).await {
+        return Ok(resp);
     }
     match state.client.bedrock(host).await {
         Ok(status) => {
@@ -442,7 +438,10 @@ mod tests {
 
     #[test]
     fn plain_motd_strips_codes() {
-        assert_eq!(strip_formatting("§aHypixel §c[1.8/1.21]"), "Hypixel [1.8/1.21]");
+        assert_eq!(
+            strip_formatting("§aHypixel §c[1.8/1.21]"),
+            "Hypixel [1.8/1.21]"
+        );
     }
 
     fn sample_response() -> StatusResponse {

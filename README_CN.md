@@ -33,7 +33,7 @@
 | GET | `/java` | 查询 Java 版服务器状态 |
 | GET | `/bedrock` | 查询 Bedrock 版服务器状态 |
 | GET | `/health` | 健康检查与版本 |
-| GET | `/swagger-ui` | Swagger UI 文档 |
+| GET | `/api-docs` | Swagger UI 文档 |
 | GET | `/api-docs/openapi.json` | OpenAPI 规范 |
 
 > 注意：`/java` 和 `/bedrock` 同时匹配带斜杠的形式（`/java/`、`/bedrock/`）。

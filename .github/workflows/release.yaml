@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Tag and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history, so the previous-tag diff works
+          fetch-tags: true
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # Gate the release on a passing test suite. Runs with
+      # --no-default-features for the same reason as the CI workflow
+      # (the `vercel` feature's upstream runtime does not compile locally).
+      - name: Test
+        run: cargo test --no-default-features
+
+      - name: Build release binary
+        run: |
+          cargo build --release --no-default-features
+          cp target/release/main MineRStatus-x86_64-unknown-linux-gnu
+
+      - name: Determine version from Cargo.toml
+        id: version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag if it does not exist yet
+        id: tag
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          if git rev-parse -q --verify "refs/tags/${tag}" > /dev/null; then
+            echo "Tag ${tag} already exists; no new release for this version"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag "${tag}"
+            git push origin "${tag}"
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          prev_tag="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)"
+          if [ -n "$prev_tag" ]; then
+            body="$(git log --oneline --no-merges "${prev_tag}..HEAD")"
+          else
+            body="$(git log --oneline --no-merges HEAD)"
+          fi
+          body="${body:-- Initial release}"
+          {
+            echo "body<<EOF"
+            echo "$body"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        if: steps.tag.outputs.created == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "MineRStatus ${{ steps.version.outputs.tag }}"
+          body: "${{ steps.changelog.outputs.body }}"
+          files: MineRStatus-x86_64-unknown-linux-gnu
